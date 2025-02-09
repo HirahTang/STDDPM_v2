@@ -54,7 +54,7 @@ def reverse_tensor(x):
 def sample_chain(args, device, flow, n_tries, dataset_info, prop_dist=None):
     n_samples = 1
     if args.dataset == 'qm9' or args.dataset == 'qm9_second_half' or args.dataset == 'qm9_first_half':
-        n_nodes = 19
+        n_nodes = 10
     elif args.dataset == 'geom':
         n_nodes = 44
     else:
@@ -110,7 +110,7 @@ def sample_chain(args, device, flow, n_tries, dataset_info, prop_dist=None):
 def sample(args, device, generative_model, dataset_info,
            prop_dist=None, nodesxsample=torch.tensor([10]), context=None,
            fix_noise=False):
-    max_n_nodes = dataset_info['max_n_nodes']  # this is the maximum node_size in QM9
+    max_n_nodes = 10  # this is the maximum node_size in QM9
 
     assert int(torch.max(nodesxsample)) <= max_n_nodes
     batch_size = len(nodesxsample)
@@ -134,7 +134,7 @@ def sample(args, device, generative_model, dataset_info,
         context = context.unsqueeze(1).repeat(1, max_n_nodes, 1).to(device) * node_mask
     else:
         context = None
-
+    # from IPython import embed; embed()
     if args.probabilistic_model == 'diffusion':
         x, h = generative_model.sample(batch_size, max_n_nodes, node_mask, edge_mask, context, fix_noise=fix_noise)
 

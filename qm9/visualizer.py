@@ -5,7 +5,8 @@ import glob
 import random
 import matplotlib
 import imageio
-
+from rdkit import Chem
+import bond_analyze
 
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -14,6 +15,75 @@ from qm9 import bond_analyze
 ### Files ####
 ###########-->
 
+
+def visualize_mol(path, one_hot, positions, dataset_info, id_from=0, name='molecule', node_mask=None):
+    BOND_ORDER_TO_EDGE_TYPE = {
+    1: Chem.BondType.SINGLE,
+    2: Chem.BondType.DOUBLE,
+    3: Chem.BondType.TRIPLE,
+    4: Chem.BondType.AROMATIC,
+    }
+    try:
+        os.makedirs(path)
+    except OSError:
+        pass
+    positions = positions.cpu().detach().numpy()
+    if node_mask is not None:
+        atomsxmol = torch.sum(node_mask, dim=1)
+    else:
+        atomsxmol = [one_hot.size(1)] * one_hot.size(0)
+
+    for batch_i in range(one_hot.size(0)):
+        atoms = torch.argmax(one_hot[batch_i], dim=1)
+        n_atoms = int(atomsxmol[batch_i])
+        for atom_i in range(n_atoms):
+            atom = atoms[atom_i]
+            atom = dataset_info['atom_decoder'][atom]
+            x = positions[batch_i, atom_i, 0]
+            y = positions[batch_i, atom_i, 1]
+            z = positions[batch_i, atom_i, 2]
+        edge_list = []
+        for i in range(n_atoms):
+            for j in range(i + 1, n_atoms):
+                p1 = np.array(positions[batch_i, i])
+                p2 = np.array(positions[batch_i, j])
+                dist = np.sqrt(np.sum((p1 - p2) ** 2))
+                atom1, atom2 = dataset_info['atom_decoder'][atoms[i]], dataset_info['atom_decoder'][atoms[j]]
+                draw_edge_int = bond_analyze.get_bond_order(atom1, atom2, dist)
+                if draw_edge_int:
+                    edge_list.append(([i, j], draw_edge_int))
+    
+        molB = Chem.RWMol()
+        # from IPython import embed; embed()
+        for atom in atoms:
+            atom = dataset_info['atom_decoder'][atom]
+            molB.AddAtom(Chem.Atom(atom))
+            
+        for bond in edge_list:
+            molB.AddBond(bond[0][0], bond[0][1], BOND_ORDER_TO_EDGE_TYPE[bond[1]])
+        conf = Chem.Conformer()
+        position = positions[batch_i]
+        # from IPython import embed; embed()
+        for idx, (x_pos, y_pos, z_pos) in enumerate(position):
+
+            conf.SetAtomPosition(idx, (float(x_pos), float(y_pos), float(z_pos)))
+            
+        molB.AddConformer(conf)
+        
+        final_mol = molB.GetMol()
+        
+        # Santize the molecule
+        try:
+            Chem.SanitizeMol(final_mol)
+            sanitized = True
+        except:
+            sanitized = False
+            
+        mol_block = Chem.MolToMolBlock(final_mol)    
+        
+
+        with  open(path + name + '_' + "%03d.mol" % (batch_i + id_from), "w") as f:
+            f.write(mol_block)
 
 def save_xyz_file(path, one_hot, charges, positions, dataset_info, id_from=0, name='molecule', node_mask=None):
     try:

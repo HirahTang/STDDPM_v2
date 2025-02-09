@@ -5,23 +5,28 @@ import numpy as np
 from egnn.models import EGNN_dynamics_QM9
 
 from equivariant_diffusion.en_diffusion import EnVariationalDiffusion
+from IPython import embed
 
-
-def get_model(args, device, dataset_info, dataloader_train):
-    histogram = dataset_info['n_nodes']
-    in_node_nf = len(dataset_info['atom_decoder']) + int(args.include_charges)
+def get_model(args, device, dataset_info, dataloader_train, dtype):
+    histogram = {10: 10000}
+    in_node_nf = len(dataset_info['atom_decoder'][:3]) + int(args.include_charges)
     nodes_dist = DistributionNodes(histogram)
 
     prop_dist = None
     if len(args.conditioning) > 0:
         prop_dist = DistributionProperty(dataloader_train, args.conditioning)
-
+    # embed()
+    sample = dataloader_train.dataset[0]
+    one_hot = sample['one_hot'].to(device, dtype)
+    charges = (sample['charges'] if args.include_charges else torch.zeros(0)).to(device, dtype)
+    h = {'categorical': one_hot, 'integer': charges}
+    # What is the meaning of condition_time? Why adding 1 here? number of feature + 1 for the time dimension
     if args.condition_time:
         dynamics_in_node_nf = in_node_nf + 1
     else:
         print('Warning: dynamics model is _not_ conditioned on time.')
         dynamics_in_node_nf = in_node_nf
-
+    # embed()
     net_dynamics = EGNN_dynamics_QM9(
         in_node_nf=dynamics_in_node_nf, context_node_nf=args.context_node_nf,
         n_dims=3, device=device, hidden_nf=args.nf,
@@ -42,6 +47,7 @@ def get_model(args, device, dataset_info, dataloader_train):
             norm_values=args.normalize_factors,
             include_charges=args.include_charges
             )
+        vdm.h = h
 
         return vdm, nodes_dist, prop_dist
 

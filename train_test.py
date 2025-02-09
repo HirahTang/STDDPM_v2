@@ -10,6 +10,7 @@ import qm9.utils as qm9utils
 from qm9 import losses
 import time
 import torch
+from IPython import embed
 
 
 def train_epoch(args, loader, epoch, model, model_dp, model_ema, ema, device, dtype, property_norms, optim,
@@ -19,6 +20,7 @@ def train_epoch(args, loader, epoch, model, model_dp, model_ema, ema, device, dt
     nll_epoch = []
     n_iterations = len(loader)
     for i, data in enumerate(loader):
+        # embed()
         x = data['positions'].to(device, dtype)
         node_mask = data['atom_mask'].to(device, dtype).unsqueeze(2)
         edge_mask = data['edge_mask'].to(device, dtype)
@@ -38,7 +40,7 @@ def train_epoch(args, loader, epoch, model, model_dp, model_ema, ema, device, dt
 
         check_mask_correct([x, one_hot, charges], node_mask)
         assert_mean_zero_with_mask(x, node_mask)
-
+        # embed()
         h = {'categorical': one_hot, 'integer': charges}
 
         if len(args.conditioning) > 0:
@@ -49,11 +51,14 @@ def train_epoch(args, loader, epoch, model, model_dp, model_ema, ema, device, dt
 
         optim.zero_grad()
 
+        
         # transform batch through flow
+        # embed()
         nll, reg_term, mean_abs_z = losses.compute_loss_and_nll(args, model_dp, nodes_dist,
                                                                 x, h, node_mask, edge_mask, context)
         # standard nll from forward KL
         loss = nll + args.ode_regularization * reg_term
+        
         loss.backward()
 
         if args.clip_grad:
@@ -153,7 +158,9 @@ def save_and_sample_chain(model, args, device, dataset_info, prop_dist,
                           epoch=0, id_from=0, batch_id=''):
     one_hot, charges, x = sample_chain(args=args, device=device, flow=model,
                                        n_tries=1, dataset_info=dataset_info, prop_dist=prop_dist)
-
+    vis.visualize_mol(f'outputs/{args.exp_name}/epoch_{epoch}_{batch_id}/chain/',
+                      one_hot, x, dataset_info, id_from, name='chain')
+    
     vis.save_xyz_file(f'outputs/{args.exp_name}/epoch_{epoch}_{batch_id}/chain/',
                       one_hot, charges, x, dataset_info, id_from, name='chain')
 
@@ -174,12 +181,13 @@ def sample_different_sizes_and_save(model, nodes_dist, args, device, dataset_inf
 
 
 def analyze_and_save(epoch, model_sample, nodes_dist, args, device, dataset_info, prop_dist,
-                     n_samples=1000, batch_size=100):
+                     n_samples=10, batch_size=100):
     print(f'Analyzing molecule stability at epoch {epoch}...')
     batch_size = min(batch_size, n_samples)
     assert n_samples % batch_size == 0
     molecules = {'one_hot': [], 'x': [], 'node_mask': []}
     for i in range(int(n_samples/batch_size)):
+        # from IPython import embed; embed()
         nodesxsample = nodes_dist.sample(batch_size)
         one_hot, charges, x, node_mask = sample(args, device, model_sample, dataset_info, prop_dist,
                                                 nodesxsample=nodesxsample)

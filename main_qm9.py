@@ -106,7 +106,7 @@ parser.add_argument('--n_stability_samples', type=int, default=500,
                     help='Number of samples to compute the stability')
 parser.add_argument('--normalize_factors', type=eval, default=[1, 4, 1],
                     help='normalize factors for [x, categorical, integer]')
-parser.add_argument('--remove_h', action='store_true')
+parser.add_argument('--remove_h', default=1, action='store_true')
 parser.add_argument('--include_charges', type=eval, default=True,
                     help='include atom charge or not')
 parser.add_argument('--visualize_every_batch', type=int, default=1e8,
@@ -188,7 +188,7 @@ args.context_node_nf = context_node_nf
 
 
 # Create EGNN flow
-model, nodes_dist, prop_dist = get_model(args, device, dataset_info, dataloaders['train'])
+model, nodes_dist, prop_dist = get_model(args, device, dataset_info, dataloaders['train'], dtype)
 if prop_dist is not None:
     prop_dist.set_normalizer(property_norms)
 model = model.to(device)

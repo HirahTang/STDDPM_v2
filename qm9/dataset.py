@@ -3,7 +3,7 @@ from qm9.data.args import init_argparse
 from qm9.data.collate import PreprocessQM9
 from qm9.data.utils import initialize_datasets
 import os
-
+from IPython import embed
 
 def retrieve_dataloaders(cfg):
     if 'qm9' in cfg.dataset:
@@ -26,7 +26,7 @@ def retrieve_dataloaders(cfg):
         if filter_n_atoms is not None:
             print("Retrieving molecules with only %d atoms" % filter_n_atoms)
             datasets = filter_atoms(datasets, filter_n_atoms)
-
+        # embed()
         # Construct PyTorch dataloaders from datasets
         preprocess = PreprocessQM9(load_charges=cfg.include_charges)
         dataloaders = {split: DataLoader(dataset,

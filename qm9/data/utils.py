@@ -11,7 +11,7 @@ from qm9.data.prepare import prepare_dataset
 
 def initialize_datasets(args, datadir, dataset, subset=None, splits=None,
                         force_download=False, subtract_thermo=False,
-                        remove_h=False):
+                        remove_h=True):
     """
     Initialize datasets.
 

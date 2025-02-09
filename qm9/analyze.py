@@ -362,13 +362,13 @@ def analyze_stability_for_molecules(molecule_list, dataset_info):
         'atm_stable': fraction_atm_stable,
     }
 
-    if use_rdkit:
-        metrics = BasicMolecularMetrics(dataset_info)
-        rdkit_metrics = metrics.evaluate(processed_list)
-        #print("Unique molecules:", rdkit_metrics[1])
-        return validity_dict, rdkit_metrics
-    else:
-        return validity_dict, None
+    # if use_rdkit:
+    #     metrics = BasicMolecularMetrics(dataset_info)
+    #     rdkit_metrics = metrics.evaluate(processed_list)
+    #     #print("Unique molecules:", rdkit_metrics[1])
+    #     return validity_dict, rdkit_metrics
+    # # else:
+    return validity_dict, None
 
 
 def analyze_node_distribution(mol_list, save_path):

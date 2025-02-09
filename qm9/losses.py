@@ -24,10 +24,10 @@ def compute_loss_and_nll(args, generative_model, nodes_dist, x, h, node_mask, ed
 
         N = node_mask.squeeze(2).sum(1).long()
 
-        log_pN = nodes_dist.log_prob(N)
+        # log_pN = nodes_dist.log_prob(N)
 
-        assert nll.size() == log_pN.size()
-        nll = nll - log_pN
+        # assert nll.size() == log_pN.size()
+        # nll = nll - log_pN
 
         # Average over batch.
         nll = nll.mean(0)

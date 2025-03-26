@@ -126,7 +126,7 @@ def random_rotation(x):
     else:
         raise Exception("Not implemented Error")
 
-    return x.contiguous()
+    return x.contiguous(), (Rx, Ry, Rz)
 
 
 # Other utilities

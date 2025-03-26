@@ -9,18 +9,19 @@ def assert_correctly_masked(variable, node_mask):
     assert (variable * (1 - node_mask)).abs().sum().item() < 1e-8
 
 
-def compute_loss_and_nll(args, generative_model, nodes_dist, x, h, node_mask, edge_mask, context):
-    bs, n_nodes, n_dims = x.size()
+def compute_loss_and_nll(args, generative_model, nodes_dist, x1, x2, h, node_mask, edge_mask, context, delta_t):
+    bs, n_nodes, n_dims = x1.size()
 
 
     if args.probabilistic_model == 'diffusion':
         edge_mask = edge_mask.view(bs, n_nodes * n_nodes)
 
-        assert_correctly_masked(x, node_mask)
+        assert_correctly_masked(x1, node_mask)
+        assert_correctly_masked(x2, node_mask)
 
         # Here x is a position tensor, and h is a dictionary with keys
         # 'categorical' and 'integer'.
-        nll = generative_model(x, h, node_mask, edge_mask, context)
+        nll, loss_dict = generative_model(x1, x2, h, delta_t, node_mask, edge_mask, context)
 
         N = node_mask.squeeze(2).sum(1).long()
 
@@ -37,4 +38,4 @@ def compute_loss_and_nll(args, generative_model, nodes_dist, x, h, node_mask, ed
     else:
         raise ValueError(args.probabilistic_model)
 
-    return nll, reg_term, mean_abs_z
+    return nll, reg_term, mean_abs_z, loss_dict

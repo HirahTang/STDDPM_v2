@@ -4,7 +4,7 @@ from torch.utils.data import Dataset
 import os
 from itertools import islice
 from math import inf
-
+import random
 import logging
 
 class ProcessedDataset(Dataset):
@@ -29,7 +29,7 @@ class ProcessedDataset(Dataset):
         Does nothing for other datasets.
 
     """
-    def __init__(self, data, included_species=None, num_pts=-1, normalize=True, shuffle=True, subtract_thermo=True):
+    def __init__(self, data, included_species=None, num_pts=-1, normalize=True, shuffle=False, subtract_thermo=True):
 
         self.data = data
 
@@ -69,10 +69,9 @@ class ProcessedDataset(Dataset):
         # Get a dictionary of statistics for all properties that are one-dimensional tensors.
         self.calc_stats()
 
-        if shuffle:
-            self.perm = torch.randperm(len(data['charges']))[:self.num_pts]
-        else:
-            self.perm = None
+        
+        self.perm = torch.randperm(len(data['charges']))[:self.num_pts]
+        
 
     def calc_stats(self):
         self.stats = {key: (val.mean(), val.std()) for key, val in self.data.items() if type(val) is torch.Tensor and val.dim() == 1 and val.is_floating_point()}
@@ -88,6 +87,11 @@ class ProcessedDataset(Dataset):
         return self.num_pts
 
     def __getitem__(self, idx):
-        if self.perm is not None:
-            idx = self.perm[idx]
-        return {key: val[idx] for key, val in self.data.items()}
+        # if self.perm is not None:
+        idx = self.perm[idx]
+        # randomly pick a integer between 0 and len(self.data['charges']) - 1
+        n = random.randint(0, 1000 - 1)
+        idx_next = idx + n if idx + n < len(self.data['charges']) else idx
+        
+        # return {key: val[idx] for key, val in self.data.items()}, {key: val[idx_next] for key, val in self.data.items()}
+        return {key: val[idx] for key, val in self.data.items()}, {key: val[idx_next] for key, val in self.data.items()}, idx_next - idx

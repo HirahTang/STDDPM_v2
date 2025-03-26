@@ -135,7 +135,7 @@ geom_no_h = {
 
 
 def get_dataset_info(dataset_name, remove_h):
-    if dataset_name == 'qm9':
+    if dataset_name == 'qm9' or dataset_name == 'dynamic':
         if not remove_h:
             return qm9_with_h
         else:

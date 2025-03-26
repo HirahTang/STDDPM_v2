@@ -18,30 +18,65 @@ def train_epoch(args, loader, epoch, model, model_dp, model_ema, ema, device, dt
     model_dp.train()
     model.train()
     nll_epoch = []
+    nll_diff = []
+    loss_dynamic = []
     n_iterations = len(loader)
     for i, data in enumerate(loader):
         # embed()
-        x = data['positions'].to(device, dtype)
-        node_mask = data['atom_mask'].to(device, dtype).unsqueeze(2)
-        edge_mask = data['edge_mask'].to(device, dtype)
-        one_hot = data['one_hot'].to(device, dtype)
-        charges = (data['charges'] if args.include_charges else torch.zeros(0)).to(device, dtype)
-
-        x = remove_mean_with_mask(x, node_mask)
-
+        mol1 = data['mol1']
+        mol2 = data['mol2']
+        delta_t = data['delta_t'].to(device, dtype)
+        # process mol1
+        x1 = mol1['positions'].to(device, dtype)
+        node_mask = mol1['atom_mask'].to(device, dtype).unsqueeze(2)
+        edge_mask = mol1['edge_mask'].to(device, dtype)
+        one_hot1 = mol1['one_hot'].to(device, dtype)
+        charges1 = (mol1['charges'] if args.include_charges else torch.zeros(0)).to(device, dtype)
+        
+        x1 = remove_mean_with_mask(x1, node_mask)
+        
         if args.augment_noise > 0:
             # Add noise eps ~ N(0, augment_noise) around points.
-            eps = sample_center_gravity_zero_gaussian_with_mask(x.size(), x.device, node_mask)
-            x = x + eps * args.augment_noise
-
-        x = remove_mean_with_mask(x, node_mask)
+            eps1 = sample_center_gravity_zero_gaussian_with_mask(x1.size(), x1.device, node_mask)
+            x1 = x1 + eps1 * args.augment_noise
+            
+        x1 = remove_mean_with_mask(x1, node_mask)
         if args.data_augmentation:
-            x = utils.random_rotation(x).detach()
-
-        check_mask_correct([x, one_hot, charges], node_mask)
-        assert_mean_zero_with_mask(x, node_mask)
-        # embed()
-        h = {'categorical': one_hot, 'integer': charges}
+            x1, rotational_matrix = utils.random_rotation(x1)
+            x1 = x1.detach()
+            
+        check_mask_correct([x1, one_hot1, charges1], node_mask)
+        assert_mean_zero_with_mask(x1, node_mask)
+        
+        # process mol2
+        x2 = mol2['positions'].to(device, dtype)
+        node_mask2 = mol2['atom_mask'].to(device, dtype).unsqueeze(2)
+        edge_mask2 = mol2['edge_mask'].to(device, dtype)
+        one_hot2 = mol2['one_hot'].to(device, dtype)
+        charges2 = (mol2['charges'] if args.include_charges else torch.zeros(0)).to(device, dtype)
+        
+        x2 = remove_mean_with_mask(x2, node_mask2)
+        
+        if args.augment_noise > 0:
+            # Add noise eps ~ N(0, augment_noise) around points.
+            eps2 = sample_center_gravity_zero_gaussian_with_mask(x2.size(), x2.device, node_mask2)
+            x2 = x2 + eps2 * args.augment_noise
+            
+        x2 = remove_mean_with_mask(x2, node_mask2)
+        if args.data_augmentation:
+            x2 = x2.transpose(1, 2)
+            Rx, Ry, Rz = rotational_matrix
+            x2 = torch.matmul(Rx, x2)
+            x2 = torch.matmul(Ry, x2)
+            x2 = torch.matmul(Rz, x2)
+            x2 = x2.transpose(1, 2)
+            x2 = x2.detach()
+            
+        check_mask_correct([x2, one_hot2, charges2], node_mask2)
+        assert_mean_zero_with_mask(x2, node_mask2)
+        
+        
+        h = {'categorical': one_hot1, 'integer': charges1}
 
         if len(args.conditioning) > 0:
             context = qm9utils.prepare_context(args.conditioning, data, property_norms).to(device, dtype)
@@ -54,8 +89,12 @@ def train_epoch(args, loader, epoch, model, model_dp, model_ema, ema, device, dt
         
         # transform batch through flow
         # embed()
-        nll, reg_term, mean_abs_z = losses.compute_loss_and_nll(args, model_dp, nodes_dist,
-                                                                x, h, node_mask, edge_mask, context)
+        nll, reg_term, mean_abs_z, loss_dict = losses.compute_loss_and_nll(args, model_dp, nodes_dist,
+                                                                x1, x2, h, node_mask, edge_mask, context, delta_t)
+        
+        loss_t_step = loss_dict['loss_t'].mean(0)
+        loss_s_step = loss_dict['loss_s'].mean(0)
+        
         # standard nll from forward KL
         loss = nll + args.ode_regularization * reg_term
         
@@ -77,7 +116,11 @@ def train_epoch(args, loader, epoch, model, model_dp, model_ema, ema, device, dt
                   f"Loss {loss.item():.2f}, NLL: {nll.item():.2f}, "
                   f"RegTerm: {reg_term.item():.1f}, "
                   f"GradNorm: {grad_norm:.1f}")
+        
+        # from IPython import embed; embed()
         nll_epoch.append(nll.item())
+        nll_diff.append(loss_t_step.item())
+        loss_dynamic.append(loss_s_step.item())
         if (epoch % args.test_epochs == 0) and (i % args.visualize_every_batch == 0) and not (epoch == 0 and i == 0):
             start = time.time()
             if len(args.conditioning) > 0:
@@ -93,10 +136,14 @@ def train_epoch(args, loader, epoch, model, model_dp, model_ema, ema, device, dt
             if len(args.conditioning) > 0:
                 vis.visualize_chain("outputs/%s/epoch_%d/conditional/" % (args.exp_name, epoch), dataset_info,
                                     wandb=wandb, mode='conditional')
-        wandb.log({"Batch NLL": nll.item()}, commit=True)
+        wandb.log({"Batch NLL": nll.item(),
+                   "Batch_NLL_diff": loss_t_step.item(),
+                   "Batch_loss_dynamic": loss_s_step.item()}, commit=True)
         if args.break_train_epoch:
             break
     wandb.log({"Train Epoch NLL": np.mean(nll_epoch)}, commit=False)
+    wandb.log({"Train Epoch NLL_diff": np.mean(nll_diff)}, commit=False)
+    wandb.log({"Train Epoch loss_dynamic": np.mean(loss_dynamic)}, commit=True)
 
 
 def check_mask_correct(variables, node_mask):

@@ -2,7 +2,7 @@ import torch
 from torch.distributions.categorical import Categorical
 
 import numpy as np
-from egnn.models import EGNN_dynamics_QM9
+from egnn.models import EGNN_dynamics_QM9, EGNN_dynamics_QM9_t
 
 from equivariant_diffusion.en_diffusion import EnVariationalDiffusion
 from IPython import embed
@@ -16,7 +16,9 @@ def get_model(args, device, dataset_info, dataloader_train, dtype):
     if len(args.conditioning) > 0:
         prop_dist = DistributionProperty(dataloader_train, args.conditioning)
     # embed()
-    sample = dataloader_train.dataset[0]
+    sample = dataloader_train.dataset[0][0]
+    # from IPython import embed
+    # embed()
     one_hot = sample['one_hot'].to(device, dtype)
     charges = (sample['charges'] if args.include_charges else torch.zeros(0)).to(device, dtype)
     h = {'categorical': one_hot, 'integer': charges}
@@ -26,6 +28,12 @@ def get_model(args, device, dataset_info, dataloader_train, dtype):
     else:
         print('Warning: dynamics model is _not_ conditioned on time.')
         dynamics_in_node_nf = in_node_nf
+        
+    if args.time_dimension:
+        time_dynamic_in_node_nf = dynamics_in_node_nf + 1
+    else:
+        print('Warning: dynamics model is _not_ conditioned on dynamic time.')
+        time_dynamic_in_node_nf = dynamics_in_node_nf
     # embed()
     net_dynamics = EGNN_dynamics_QM9(
         in_node_nf=dynamics_in_node_nf, context_node_nf=args.context_node_nf,
@@ -34,10 +42,19 @@ def get_model(args, device, dataset_info, dataloader_train, dtype):
         attention=args.attention, tanh=args.tanh, mode=args.model, norm_constant=args.norm_constant,
         inv_sublayers=args.inv_sublayers, sin_embedding=args.sin_embedding,
         normalization_factor=args.normalization_factor, aggregation_method=args.aggregation_method)
-
+    
+    net_dynamics_time = EGNN_dynamics_QM9_t(
+        in_node_nf=time_dynamic_in_node_nf, context_node_nf=args.context_node_nf,
+        n_dims=3, device=device, hidden_nf=args.nf,
+        act_fn=torch.nn.SiLU(), n_layers=args.n_layers,
+        attention=args.attention, tanh=args.tanh, mode=args.model, norm_constant=args.norm_constant,
+        inv_sublayers=args.inv_sublayers, sin_embedding=args.sin_embedding,
+        normalization_factor=args.normalization_factor, aggregation_method=args.aggregation_method)
+    
     if args.probabilistic_model == 'diffusion':
         vdm = EnVariationalDiffusion(
             dynamics=net_dynamics,
+            time_dynamics=net_dynamics_time,
             in_node_nf=in_node_nf,
             n_dims=3,
             timesteps=args.diffusion_steps,

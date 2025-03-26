@@ -66,17 +66,17 @@ def initialize_datasets(args, datadir, dataset, subset=None, splits=None,
             datasets[split] = {key: torch.from_numpy(
                 val) for key, val in f.items()}
 
-    if dataset != 'qm9':
-        np.random.seed(42)
-        fixed_perm = np.random.permutation(len(datasets['train']['num_atoms']))
-        if dataset == 'qm9_second_half':
-            sliced_perm = fixed_perm[len(datasets['train']['num_atoms'])//2:]
-        elif dataset == 'qm9_first_half':
-            sliced_perm = fixed_perm[0:len(datasets['train']['num_atoms']) // 2]
-        else:
-            raise Exception('Wrong dataset name')
-        for key in datasets['train']:
-            datasets['train'][key] = datasets['train'][key][sliced_perm]
+    # if dataset != 'qm9':
+    #     np.random.seed(42)
+    #     fixed_perm = np.random.permutation(len(datasets['train']['num_atoms']))
+    #     if dataset == 'qm9_second_half':
+    #         sliced_perm = fixed_perm[len(datasets['train']['num_atoms'])//2:]
+    #     elif dataset == 'qm9_first_half':
+    #         sliced_perm = fixed_perm[0:len(datasets['train']['num_atoms']) // 2]
+    #     else:
+    #         raise Exception('Wrong dataset name')
+    #     for key in datasets['train']:
+    #         datasets['train'][key] = datasets['train'][key][sliced_perm]
 
     # Basic error checking: Check the training/test/validation splits have the same set of keys.
     keys = [list(data.keys()) for data in datasets.values()]
@@ -115,7 +115,7 @@ def initialize_datasets(args, datadir, dataset, subset=None, splits=None,
     # Now initialize MolecularDataset based upon loaded data
     datasets = {split: ProcessedDataset(data, num_pts=num_pts.get(
         split, -1), included_species=all_species, subtract_thermo=subtract_thermo) for split, data in datasets.items()}
-
+    # from IPython import embed; embed()
     # Now initialize MolecularDataset based upon loaded data
 
     # Check that all datasets have the same included species:

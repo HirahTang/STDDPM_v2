@@ -53,7 +53,7 @@ def reverse_tensor(x):
 
 def sample_chain(args, device, flow, n_tries, dataset_info, prop_dist=None):
     n_samples = 1
-    if args.dataset == 'qm9' or args.dataset == 'qm9_second_half' or args.dataset == 'qm9_first_half':
+    if args.dataset == 'qm9' or args.dataset == 'qm9_second_half' or args.dataset == 'qm9_first_half' or args.dataset == 'dynamic':
         n_nodes = 10
     elif args.dataset == 'geom':
         n_nodes = 44
@@ -101,6 +101,10 @@ def sample_chain(args, device, flow, n_tries, dataset_info, prop_dist=None):
             elif i == n_tries - 1:
                 print('Did not find stable molecule, showing last sample.')
 
+    elif args.probabilistic_model == 'dynamic':
+        # Yet implemented
+        pass
+    
     else:
         raise ValueError
 
@@ -148,6 +152,10 @@ def sample(args, device, generative_model, dataset_info,
         if args.include_charges:
             assert_correctly_masked(charges.float(), node_mask)
 
+    elif args.probabilistic_model == 'dynamic':
+        # Yet implemented
+        pass
+    
     else:
         raise ValueError(args.probabilistic_model)
 

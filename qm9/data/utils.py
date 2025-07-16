@@ -114,10 +114,9 @@ def initialize_datasets(args, datadir, dataset, subset=None, splits=None,
 
     # Now initialize MolecularDataset based upon loaded data
     datasets = {split: ProcessedDataset(data, num_pts=num_pts.get(
-        split, -1), included_species=all_species, subtract_thermo=subtract_thermo) for split, data in datasets.items()}
+        split, -1), subtract_thermo=subtract_thermo) for split, data in datasets.items()}
     # from IPython import embed; embed()
     # Now initialize MolecularDataset based upon loaded data
-
     # Check that all datasets have the same included species:
     assert(len(set(tuple(data.included_species.tolist()) for data in datasets.values())) ==
            1), 'All datasets must have same included_species! {}'.format({key: data.included_species for key, data in datasets.items()})

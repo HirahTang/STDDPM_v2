@@ -51,9 +51,9 @@ class EGNN_dynamics_QM9(nn.Module):
         h_dims = dims - self.n_dims
         edges = self.get_adj_matrix(n_nodes, bs, self.device)
         edges = [x.to(self.device) for x in edges]
-        node_mask = node_mask.view(bs*n_nodes, 1)
-        edge_mask = edge_mask.view(bs*n_nodes*n_nodes, 1)
-        xh = xh.view(bs*n_nodes, -1).clone() * node_mask
+        node_mask = node_mask.reshape(bs*n_nodes, 1)
+        edge_mask = edge_mask.reshape(bs*n_nodes*n_nodes, 1)
+        xh = xh.reshape(bs*n_nodes, -1).clone() * node_mask
         x = xh[:, 0:self.n_dims].clone()
         if h_dims == 0:
             h = torch.ones(bs*n_nodes, 1).to(self.device)
@@ -67,13 +67,13 @@ class EGNN_dynamics_QM9(nn.Module):
                 h_time = torch.empty_like(h[:, 0:1]).fill_(t.item())
             else:
                 # t is different over the batch dimension.
-                h_time = t.view(bs, 1).repeat(1, n_nodes)
-                h_time = h_time.view(bs * n_nodes, 1)
+                h_time = t.reshape(bs, 1).repeat(1, n_nodes)
+                h_time = h_time.reshape(bs * n_nodes, 1)
             h = torch.cat([h, h_time], dim=1)
 
         if context is not None:
             # We're conditioning, awesome!
-            context = context.view(bs*n_nodes, self.context_node_nf)
+            context = context.reshape(bs*n_nodes, self.context_node_nf)
             h = torch.cat([h, context], dim=1)
 
         if self.mode == 'egnn_dynamics':
@@ -97,7 +97,7 @@ class EGNN_dynamics_QM9(nn.Module):
             # Slice off last dimension which represented time.
             h_final = h_final[:, :-1]
 
-        vel = vel.view(bs, n_nodes, -1)
+        vel = vel.reshape(bs, n_nodes, -1)
 
         if torch.any(torch.isnan(vel)):
             print('Warning: detected nan, resetting EGNN output to zero.')
@@ -106,13 +106,13 @@ class EGNN_dynamics_QM9(nn.Module):
         if node_mask is None:
             vel = remove_mean(vel)
         else:
-            vel = remove_mean_with_mask(vel, node_mask.view(bs, n_nodes, 1))
+            vel = remove_mean_with_mask(vel, node_mask.reshape(bs, n_nodes, 1))
 
         if h_dims == 0:
             return vel
         else:
-            h_final = h_final.view(bs, n_nodes, -1)
-            output_h = output_h.view(bs, n_nodes, -1)
+            h_final = h_final.reshape(bs, n_nodes, -1)
+            output_h = output_h.reshape(bs, n_nodes, -1)
             # from IPython import embed; embed()
             return torch.cat([vel, output_h], dim=2)
 
@@ -185,9 +185,10 @@ class EGNN_dynamics_QM9_t(nn.Module):
         h_dims = dims - self.n_dims
         edges = self.get_adj_matrix(n_nodes, bs, self.device)
         edges = [x.to(self.device) for x in edges]
-        node_mask = node_mask.view(bs*n_nodes, 1)
-        edge_mask = edge_mask.view(bs*n_nodes*n_nodes, 1)
-        xh = xh.view(bs*n_nodes, -1).clone() * node_mask
+        # from IPython import embed; embed()
+        node_mask = node_mask.reshape(bs*n_nodes, 1)
+        edge_mask = edge_mask.reshape(bs*n_nodes*n_nodes, 1)
+        xh = xh.reshape(bs*n_nodes, -1).clone() * node_mask
         x = xh[:, 0:self.n_dims].clone()
         if h_dims == 0:
             h = torch.ones(bs*n_nodes, 1).to(self.device)
@@ -201,8 +202,8 @@ class EGNN_dynamics_QM9_t(nn.Module):
                 h_time = torch.empty_like(h[:, 0:1]).fill_(s_t.item())
             else:
                 # t is different over the batch dimension.
-                h_time = s_t.view(bs, 1).repeat(1, n_nodes)
-                h_time = h_time.view(bs * n_nodes, 1)
+                h_time = s_t.reshape(bs, 1).repeat(1, n_nodes)
+                h_time = h_time.reshape(bs * n_nodes, 1)
             h = torch.cat([h, h_time], dim=1)
 
         if np.prod(t_t.size()) == 1:
@@ -210,8 +211,8 @@ class EGNN_dynamics_QM9_t(nn.Module):
             h_space = torch.empty_like(h[:, 0:1]).fill_(t_t.item())
         else:
             # t is different over the batch dimension.
-            h_space = t_t.view(bs, 1).repeat(1, n_nodes)
-            h_space = h_space.view(bs * n_nodes, 1)
+            h_space = t_t.reshape(bs, 1).repeat(1, n_nodes)
+            h_space = h_space.reshape(bs * n_nodes, 1)
             
         # print("Inside the forward function of EGNN_dynamics_QM9_t")
         # from IPython import embed; embed()
@@ -219,7 +220,7 @@ class EGNN_dynamics_QM9_t(nn.Module):
         
         if context is not None:
             # We're conditioning, awesome!
-            context = context.view(bs*n_nodes, self.context_node_nf)
+            context = context.reshape(bs*n_nodes, self.context_node_nf)
             h = torch.cat([h, context], dim=1)
 
         if self.mode == 'egnn_dynamics':
@@ -243,7 +244,7 @@ class EGNN_dynamics_QM9_t(nn.Module):
             # Slice off last dimension which represented time.
             h_final = h_final[:, :-1]
 
-        vel = vel.view(bs, n_nodes, -1)
+        vel = vel.reshape(bs, n_nodes, -1)
 
         if torch.any(torch.isnan(vel)):
             print('Warning: detected nan, resetting EGNN output to zero.')
@@ -252,13 +253,13 @@ class EGNN_dynamics_QM9_t(nn.Module):
         if node_mask is None:
             vel = remove_mean(vel)
         else:
-            vel = remove_mean_with_mask(vel, node_mask.view(bs, n_nodes, 1))
+            vel = remove_mean_with_mask(vel, node_mask.reshape(bs, n_nodes, 1))
 
         if h_dims == 0:
             return vel
         else:
-            h_final = h_final.view(bs, n_nodes, -1)
-            output_h = output_h.view(bs, n_nodes, -1)
+            h_final = h_final.reshape(bs, n_nodes, -1)
+            output_h = output_h.reshape(bs, n_nodes, -1)
             # from IPython import embed; embed()
             return torch.cat([vel, output_h], dim=2)
 

@@ -5,6 +5,15 @@ from equivariant_diffusion.utils import assert_mean_zero_with_mask, remove_mean_
     assert_correctly_masked
 from qm9.analyze import check_stability
 
+charge_mapping = {6: 0, 7: 1, 8: 2} 
+def charge_conversion(charges):
+    # Convert charges to one-hot encoding
+    # mapping charges to 0, 1, 2 by {6: 0, 7: 1, 8: 2}
+    lookup = torch.full((max(charge_mapping.keys()) + 1,), -1).to(charges.device)
+    for k, v in charge_mapping.items():
+        lookup[k] = v
+    charges = charges.long()
+    return lookup[charges.squeeze(-1)]
 
 def rotate_chain(z):
     assert z.size(0) == 1
@@ -73,7 +82,7 @@ def sample_chain(args, device, flow, n_tries, dataset_info, prop_dist=None):
     edge_mask = (1 - torch.eye(n_nodes)).unsqueeze(0)
     edge_mask = edge_mask.repeat(n_samples, 1, 1).view(-1, 1).to(device)
 
-    if args.probabilistic_model == 'diffusion':
+    if args.probabilistic_model == 'diffusion' or args.probabilistic_model == 'dynamic':
         one_hot, charges, x = None, None, None
         for i in range(n_tries):
             chain = flow.sample_chain(n_samples, n_nodes, node_mask, edge_mask, context, keep_frames=100)
@@ -83,16 +92,22 @@ def sample_chain(args, device, flow, n_tries, dataset_info, prop_dist=None):
             chain = torch.cat([chain, chain[-1:].repeat(10, 1, 1)], dim=0)
             x = chain[-1:, :, 0:3]
             one_hot = chain[-1:, :, 3:-1]
-            one_hot = torch.argmax(one_hot, dim=2)
+            charges = chain[:, :, -1]
+            one_hot = charge_conversion(charges)
+            # from IPython import embed; embed()
+            # one_hot = torch.argmax(one_hot, dim=2)
 
             atom_type = one_hot.squeeze(0).cpu().detach().numpy()
             x_squeeze = x.squeeze(0).cpu().detach().numpy()
-            mol_stable = check_stability(x_squeeze, atom_type, dataset_info)[0]
+            
+            mol_stable = check_stability(x_squeeze, atom_type[0], dataset_info)[0]
 
             # Prepare entire chain.
             x = chain[:, :, 0:3]
             one_hot = chain[:, :, 3:-1]
-            one_hot = F.one_hot(torch.argmax(one_hot, dim=2), num_classes=len(dataset_info['atom_decoder']))
+            charges = chain[:, :, -1]
+            one_hot = charge_conversion(charges)
+            one_hot = F.one_hot(one_hot, num_classes=len(dataset_info['atom_decoder']))
             charges = torch.round(chain[:, :, -1:]).long()
 
             if mol_stable:
@@ -101,9 +116,20 @@ def sample_chain(args, device, flow, n_tries, dataset_info, prop_dist=None):
             elif i == n_tries - 1:
                 print('Did not find stable molecule, showing last sample.')
 
-    elif args.probabilistic_model == 'dynamic':
-        # Yet implemented
-        pass
+    # elif args.probabilistic_model == 'dynamic':
+    #     # Yet implemented
+    #     dynamic_t = 500
+    #     x, h = flow.sample_dynamic(n_samples, n_nodes, node_mask, edge_mask, context, dynamic_t)
+    #     # x = remove_mean_with_mask(x, node_mask)
+    #     assert_correctly_masked(x, node_mask)
+    #     assert_mean_zero_with_mask(x, node_mask)
+
+    #     one_hot = h['categorical']
+    #     charges = h['integer']
+
+    #     assert_correctly_masked(one_hot.float(), node_mask)
+    #     if args.include_charges:
+    #         assert_correctly_masked(charges.float(), node_mask)
     
     else:
         raise ValueError
@@ -111,7 +137,7 @@ def sample_chain(args, device, flow, n_tries, dataset_info, prop_dist=None):
     return one_hot, charges, x
 
 
-def sample(args, device, generative_model, dataset_info,
+def sample(args, device, generative_model, dataset_info, dynamic_t=500,
            prop_dist=None, nodesxsample=torch.tensor([10]), context=None,
            fix_noise=False):
     max_n_nodes = 10  # this is the maximum node_size in QM9
@@ -138,10 +164,10 @@ def sample(args, device, generative_model, dataset_info,
         context = context.unsqueeze(1).repeat(1, max_n_nodes, 1).to(device) * node_mask
     else:
         context = None
-    # from IPython import embed; embed()
+    
     if args.probabilistic_model == 'diffusion':
         x, h = generative_model.sample(batch_size, max_n_nodes, node_mask, edge_mask, context, fix_noise=fix_noise)
-
+        # from IPython import embed; embed()
         assert_correctly_masked(x, node_mask)
         assert_mean_zero_with_mask(x, node_mask)
 
@@ -154,14 +180,26 @@ def sample(args, device, generative_model, dataset_info,
 
     elif args.probabilistic_model == 'dynamic':
         # Yet implemented
-        pass
+        print("Dynamic Branch, dynamic_t: ", dynamic_t)
+        # dynamic_t = 800
+        x, h = generative_model.sample_dynamic(batch_size, max_n_nodes, node_mask, edge_mask, context, dynamic_t, markovian=args.markovian_sampling)
+        
+        assert_correctly_masked(x, node_mask)
+        assert_mean_zero_with_mask(x, node_mask)
+        one_hot = h['categorical']
+        charges = h['integer']
+        
+        assert_correctly_masked(one_hot.float(), node_mask)
+        if args.include_charges:
+            assert_correctly_masked(charges.float(), node_mask)
     
     else:
         raise ValueError(args.probabilistic_model)
-
+    one_hot = charge_conversion(charges)
+    one_hot = F.one_hot(one_hot, num_classes=len(dataset_info['atom_decoder']))
     return one_hot, charges, x, node_mask
 
-
+    
 def sample_sweep_conditional(args, device, generative_model, dataset_info, prop_dist, n_nodes=19, n_frames=100):
     nodesxsample = torch.tensor([n_nodes] * n_frames)
 

@@ -8,10 +8,13 @@ from qm9.sampling import sample_chain, sample, sample_sweep_conditional
 import utils
 import qm9.utils as qm9utils
 from qm9 import losses
+import torch.nn.functional as F
 import time
 import torch
 from IPython import embed
+from tqdm import tqdm
 
+charge_mapping = {6: 0, 7: 1, 8: 2}  # Mapping for charges to one-hot encoding
 
 def train_epoch(args, loader, epoch, model, model_dp, model_ema, ema, device, dtype, property_norms, optim,
                 nodes_dist, gradnorm_queue, dataset_info, prop_dist):
@@ -127,8 +130,8 @@ def train_epoch(args, loader, epoch, model, model_dp, model_ema, ema, device, dt
                 save_and_sample_conditional(args, device, model_ema, prop_dist, dataset_info, epoch=epoch)
             save_and_sample_chain(model_ema, args, device, dataset_info, prop_dist, epoch=epoch,
                                   batch_id=str(i))
-            sample_different_sizes_and_save(model_ema, nodes_dist, args, device, dataset_info,
-                                            prop_dist, epoch=epoch)
+            # sample_different_sizes_and_save(model_ema, nodes_dist, args, device, dataset_info,
+            #                                 prop_dist, epoch=epoch)
             print(f'Sampling took {time.time() - start:.2f} seconds')
 
             vis.visualize(f"outputs/{args.exp_name}/epoch_{epoch}_{i}", dataset_info=dataset_info, wandb=wandb)
@@ -157,29 +160,58 @@ def test(args, loader, epoch, eval_model, device, dtype, property_norms, nodes_d
     with torch.no_grad():
         nll_epoch = 0
         n_samples = 0
-
+        nll_diff = []
+        loss_dynamic = []
         n_iterations = len(loader)
 
         for i, data in enumerate(loader):
-            x = data['positions'].to(device, dtype)
-            batch_size = x.size(0)
-            node_mask = data['atom_mask'].to(device, dtype).unsqueeze(2)
-            edge_mask = data['edge_mask'].to(device, dtype)
-            one_hot = data['one_hot'].to(device, dtype)
-            charges = (data['charges'] if args.include_charges else torch.zeros(0)).to(device, dtype)
+            mol1 = data['mol1']
+            mol2 = data['mol2']
+            delta_t = data['delta_t'].to(device, dtype)
+            
+            x1 = mol1['positions'].to(device, dtype)
+            node_mask = mol1['atom_mask'].to(device, dtype).unsqueeze(2)
+            edge_mask = mol1['edge_mask'].to(device, dtype)
+            one_hot1 = mol1['one_hot'].to(device, dtype)
+            charges1 = (mol1['charges'] if args.include_charges else torch.zeros(0)).to(device, dtype)
+        
+            
+            batch_size = x1.size(0)
+            # node_mask = data['atom_mask'].to(device, dtype).unsqueeze(2)
+            # edge_mask = data['edge_mask'].to(device, dtype)
+            # one_hot = data['one_hot'].to(device, dtype)
+            # charges = (data['charges'] if args.include_charges else torch.zeros(0)).to(device, dtype)
 
             if args.augment_noise > 0:
                 # Add noise eps ~ N(0, augment_noise) around points.
-                eps = sample_center_gravity_zero_gaussian_with_mask(x.size(),
-                                                                    x.device,
+                eps1 = sample_center_gravity_zero_gaussian_with_mask(x1.size(),
+                                                                    x1.device,
                                                                     node_mask)
-                x = x + eps * args.augment_noise
+                x1 = x1 + eps1 * args.augment_noise
 
-            x = remove_mean_with_mask(x, node_mask)
-            check_mask_correct([x, one_hot, charges], node_mask)
-            assert_mean_zero_with_mask(x, node_mask)
+            x1 = remove_mean_with_mask(x1, node_mask)
+            check_mask_correct([x1, one_hot1, charges1], node_mask)
+            assert_mean_zero_with_mask(x1, node_mask)
 
-            h = {'categorical': one_hot, 'integer': charges}
+            x2 = mol2['positions'].to(device, dtype)
+            node_mask2 = mol2['atom_mask'].to(device, dtype).unsqueeze(2)
+            edge_mask2 = mol2['edge_mask'].to(device, dtype)
+            one_hot2 = mol2['one_hot'].to(device, dtype)
+            charges2 = (mol2['charges'] if args.include_charges else torch.zeros(0)).to(device, dtype)
+            
+            x2 = remove_mean_with_mask(x2, node_mask2)
+
+            if args.augment_noise > 0:
+                # Add noise eps ~ N(0, augment_noise) around points.
+                eps2 = sample_center_gravity_zero_gaussian_with_mask(x2.size(), x2.device, node_mask2)
+                x2 = x2 + eps2 * args.augment_noise
+                
+            x2 = remove_mean_with_mask(x2, node_mask2)
+            
+            check_mask_correct([x2, one_hot2, charges2], node_mask2)
+            assert_mean_zero_with_mask(x2, node_mask2)
+            
+            h = {'categorical': one_hot1, 'integer': charges1}
 
             if len(args.conditioning) > 0:
                 context = qm9utils.prepare_context(args.conditioning, data, property_norms).to(device, dtype)
@@ -188,16 +220,24 @@ def test(args, loader, epoch, eval_model, device, dtype, property_norms, nodes_d
                 context = None
 
             # transform batch through flow
-            nll, _, _ = losses.compute_loss_and_nll(args, eval_model, nodes_dist, x, h,
-                                                    node_mask, edge_mask, context)
+            nll, _, _, loss_dict = losses.compute_loss_and_nll(args, eval_model, nodes_dist,
+                                                                x1, x2, h, node_mask, edge_mask, context, delta_t)
+            
+            loss_t_step = loss_dict['loss_t'].mean(0)
+            loss_s_step = loss_dict['loss_s'].mean(0)
+            
+            nll_diff.append(loss_t_step.item())
+            loss_dynamic.append(loss_s_step.item())
+            
             # standard nll from forward KL
 
             nll_epoch += nll.item() * batch_size
             n_samples += batch_size
             if i % args.n_report_steps == 0:
                 print(f"\r {partition} NLL \t epoch: {epoch}, iter: {i}/{n_iterations}, "
-                      f"NLL: {nll_epoch/n_samples:.2f}")
-
+                      f"NLL: {nll_epoch/n_samples:.2f}, Dynamic loss: {loss_dynamic[-1]:.2f}, ")
+        wandb.log({f"{partition} Epoch NLL_diff": np.mean(nll_diff)}, commit=False)
+        wandb.log({f"{partition} Epoch loss_dynamic": np.mean(loss_dynamic)}, commit=True)
     return nll_epoch/n_samples
 
 
@@ -205,6 +245,7 @@ def save_and_sample_chain(model, args, device, dataset_info, prop_dist,
                           epoch=0, id_from=0, batch_id=''):
     one_hot, charges, x = sample_chain(args=args, device=device, flow=model,
                                        n_tries=1, dataset_info=dataset_info, prop_dist=prop_dist)
+    # from IPython import embed; embed()
     vis.visualize_mol(f'outputs/{args.exp_name}/epoch_{epoch}_{batch_id}/chain/',
                       one_hot, x, dataset_info, id_from, name='chain')
     
@@ -226,6 +267,14 @@ def sample_different_sizes_and_save(model, nodes_dist, args, device, dataset_inf
         vis.save_xyz_file(f'outputs/{args.exp_name}/epoch_{epoch}_{batch_id}/', one_hot, charges, x, dataset_info,
                           batch_size * counter, name='molecule')
 
+def charge_conversion(charges):
+    # Convert charges to one-hot encoding
+    # mapping charges to 0, 1, 2 by {6: 0, 7: 1, 8: 2}
+    lookup = torch.full((max(charge_mapping.keys()) + 1,), -1).to(charges.device)
+    for k, v in charge_mapping.items():
+        lookup[k] = v
+    charges = charges.long()
+    return lookup[charges.squeeze(-1)]
 
 def analyze_and_save(epoch, model_sample, nodes_dist, args, device, dataset_info, prop_dist,
                      n_samples=10, batch_size=100):
@@ -233,17 +282,27 @@ def analyze_and_save(epoch, model_sample, nodes_dist, args, device, dataset_info
     batch_size = min(batch_size, n_samples)
     assert n_samples % batch_size == 0
     molecules = {'one_hot': [], 'x': [], 'node_mask': []}
-    for i in range(int(n_samples/batch_size)):
+    for i in tqdm(range(int(n_samples/batch_size))):
         # from IPython import embed; embed()
         nodesxsample = nodes_dist.sample(batch_size)
         one_hot, charges, x, node_mask = sample(args, device, model_sample, dataset_info, prop_dist,
                                                 nodesxsample=nodesxsample)
-
+        
+        # from IPython import embed; embed()
+        # # Convert charges to one-hot encoding
+        # # mapping charges to 0, 1, 2 by {6: 0, 7: 1, 8: 2}
+        # charges = torch.tensor([charge_mapping[c.item()] for c in charges])
+        
+        
+        
+        
         molecules['one_hot'].append(one_hot.detach().cpu())
+        
         molecules['x'].append(x.detach().cpu())
         molecules['node_mask'].append(node_mask.detach().cpu())
 
     molecules = {key: torch.cat(molecules[key], dim=0) for key in molecules}
+    # from IPython import embed; embed()
     validity_dict, rdkit_tuple = analyze_stability_for_molecules(molecules, dataset_info)
 
     wandb.log(validity_dict)

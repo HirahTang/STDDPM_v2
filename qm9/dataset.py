@@ -85,7 +85,6 @@ def retrieve_dataloaders(cfg):
         charge_scale = None
     else:
         raise ValueError(f'Unknown dataset {cfg.dataset}')
-
     return dataloaders, charge_scale
 
 

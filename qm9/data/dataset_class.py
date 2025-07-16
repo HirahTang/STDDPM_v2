@@ -41,10 +41,11 @@ class ProcessedDataset(Dataset):
                 self.num_pts = len(data['charges'])
             else:
                 self.num_pts = num_pts
-
+        self.data['atom_idx'] = torch.tensor(range(1, self.data['charges'].shape[1]+1))
+        self.data['atom_idx'] = self.data['atom_idx'].unsqueeze(0).expand(len(data['charges']), -1)
         # If included species is not specified
         if included_species is None:
-            included_species = torch.unique(self.data['charges'], sorted=True)
+            included_species = torch.unique(self.data['atom_idx'], sorted=True)
             if included_species[0] == 0:
                 included_species = included_species[1:]
 
@@ -58,9 +59,11 @@ class ProcessedDataset(Dataset):
                 data[key] -= data[key + '_thermo'].to(data[key].dtype)
 
         self.included_species = included_species
-
-        self.data['one_hot'] = self.data['charges'].unsqueeze(-1) == included_species.unsqueeze(0).unsqueeze(0)
-
+        self.data['one_hot'] = self.data['atom_idx'].unsqueeze(-1) == included_species.unsqueeze(0).unsqueeze(0)
+        # broadcast self.data['one_hot'] to num_pts at the first dimension
+        # self.data['one_hot'] = self.data['one_hot'].expand(len(data['charges']), -1, -1)
+        # make self.data['one_hot'] a tensor of size (num_pts, num_atoms)
+    
         self.num_species = len(included_species)
         self.max_charge = max(included_species)
 
@@ -90,7 +93,8 @@ class ProcessedDataset(Dataset):
         # if self.perm is not None:
         idx = self.perm[idx]
         # randomly pick a integer between 0 and len(self.data['charges']) - 1
-        n = random.randint(0, 1000 - 1)
+        # n = random.randint(0, 11 - 1)
+        n = 1
         idx_next = idx + n if idx + n < len(self.data['charges']) else idx
         
         # return {key: val[idx] for key, val in self.data.items()}, {key: val[idx_next] for key, val in self.data.items()}

@@ -9,7 +9,8 @@ from IPython import embed
 
 def get_model(args, device, dataset_info, dataloader_train, dtype):
     histogram = {10: 10000}
-    in_node_nf = len(dataset_info['atom_decoder'][:3]) + int(args.include_charges)
+    # in_node_nf = len(dataset_info['atom_decoder'][:3]) + int(args.include_charges)
+    in_node_nf = 10 + int(args.include_charges)
     nodes_dist = DistributionNodes(histogram)
 
     prop_dist = None
@@ -51,7 +52,7 @@ def get_model(args, device, dataset_info, dataloader_train, dtype):
         inv_sublayers=args.inv_sublayers, sin_embedding=args.sin_embedding,
         normalization_factor=args.normalization_factor, aggregation_method=args.aggregation_method)
     
-    if args.probabilistic_model == 'diffusion':
+    if args.probabilistic_model == 'diffusion' or args.probabilistic_model == 'dynamic':
         vdm = EnVariationalDiffusion(
             dynamics=net_dynamics,
             time_dynamics=net_dynamics_time,

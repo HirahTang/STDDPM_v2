@@ -130,7 +130,7 @@ def main():
     dataloaders, charge_scale = dataset.retrieve_dataloaders(args)
 
     flow, nodes_dist, prop_dist = get_model(
-        args, device, dataset_info, dataloaders['train'])
+        args, device, dataset_info, dataloaders['train'], dtype)
     flow.to(device)
 
     fn = 'generative_model_ema.npy' if args.ema_decay > 0 else 'generative_model.npy'
@@ -139,10 +139,10 @@ def main():
 
     flow.load_state_dict(flow_state_dict)
 
-    print('Sampling handful of molecules.')
-    sample_different_sizes_and_save(
-        args, eval_args, device, flow, nodes_dist,
-        dataset_info=dataset_info, n_samples=30)
+    # print('Sampling handful of molecules.')
+    # save_and_sample_chain(
+    #     args, eval_args, device, flow, nodes_dist,
+    #     dataset_info=dataset_info, n_samples=100)
 
     print('Sampling stable molecules.')
     sample_only_stable_different_sizes_and_save(
@@ -153,11 +153,11 @@ def main():
         join(eval_args.model_path, 'eval/molecules/'), dataset_info,
         max_num=100, spheres_3d=True)
 
-    print('Sampling visualization chain.')
-    save_and_sample_chain(
-        args, eval_args, device, flow,
-        n_tries=eval_args.n_tries, n_nodes=eval_args.n_nodes,
-        dataset_info=dataset_info)
+    # print('Sampling visualization chain.')
+    # save_and_sample_chain(
+    #     args, eval_args, device, flow,
+    #     n_tries=eval_args.n_tries, n_nodes=eval_args.n_nodes,
+    #     dataset_info=dataset_info)
 
 
 if __name__ == "__main__":

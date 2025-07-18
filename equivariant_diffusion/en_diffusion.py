@@ -7,6 +7,8 @@ from torch.nn import functional as F
 from equivariant_diffusion import utils as diffusion_utils
 from IPython import embed
 from tqdm import tqdm
+import pandas as pd
+import os
 # Defining some useful util functions.
 def expm1(x: torch.Tensor) -> torch.Tensor:
     return torch.expm1(x)
@@ -725,9 +727,29 @@ class EnVariationalDiffusion(torch.nn.Module):
 
         assert len(loss.shape) == 1, f'{loss.shape} has more than only batch dim.'
         
+        # save loss, loss_dynamic, t_int in a txt file locally as a table
+        # from IPython import embed; embed()
+        
+        # save loss, loss_dynamic, t_int, error in a dictionary
+        # loss_dynamic_save = loss_dynamic.clone().detach().cpu().numpy()
+        # loss_save = loss.clone().detach().cpu().numpy()
+        # t_int_save = t_int.clone().squeeze().numpy()
+        
+        # # open a file in write mode
+        
+        # dataframe = pd.DataFrame({
+        #     't_int': t_int_save,
+        #     'loss': loss_save,
+        #     'loss_dynamic': loss_dynamic_save,
+        # })
+        # if not os.path.exists('loss_data.csv'):
+        #     dataframe.to_csv('loss_data.csv', index=False)
+        # else:
+        #     dataframe.to_csv('loss_data.csv', mode='a', header=False, index=False)
+        
         
         loss_dynamic = loss_dynamic * (t.squeeze() < 0.5)
-        # embed()
+
         return loss + loss_dynamic, {'t': t_int.squeeze(), 'loss_t': loss.squeeze(), 'loss_s': loss_dynamic.squeeze(),
                       'error': error.squeeze()}
 

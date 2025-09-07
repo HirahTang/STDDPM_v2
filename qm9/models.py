@@ -46,8 +46,8 @@ def get_model(args, device, dataset_info, dataloader_train, dtype):
     
     net_dynamics_time = EGNN_dynamics_QM9_t(
         in_node_nf=time_dynamic_in_node_nf, context_node_nf=args.context_node_nf,
-        n_dims=3, device=device, hidden_nf=args.nf * 2,
-        act_fn=torch.nn.SiLU(), n_layers=args.n_layers + 3,
+        n_dims=3, device=device, hidden_nf=args.nf,
+        act_fn=torch.nn.SiLU(), n_layers=args.n_layers,
         attention=args.attention, tanh=args.tanh, mode=args.model, norm_constant=args.norm_constant,
         inv_sublayers=args.inv_sublayers, sin_embedding=args.sin_embedding,
         normalization_factor=args.normalization_factor, aggregation_method=args.aggregation_method)

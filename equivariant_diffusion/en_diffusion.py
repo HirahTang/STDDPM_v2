@@ -7,6 +7,7 @@ from torch.nn import functional as F
 from equivariant_diffusion import utils as diffusion_utils
 from IPython import embed
 from tqdm import tqdm
+import os
 # Defining some useful util functions.
 def expm1(x: torch.Tensor) -> torch.Tensor:
     return torch.expm1(x)
@@ -497,8 +498,7 @@ class EnVariationalDiffusion(torch.nn.Module):
 
         x = xh[:, :, :self.n_dims]
 
-        h_int = z0[:, :, -1:] if self.include_charges else torch.zeros(0).to(z0.device)
-        # x, h_cat, h_int = self.unnormalize(x, z0[:, :, self.n_dims:-1], h_int, node_mask)
+        h_int = z0[:, :, -1:] if self.include_charges else torch.zeros(0).to(z0.device)        # x, h_cat, h_int = self.unnormalize(x, z0[:, :, self.n_dims:-1], h_int, node_mask)
 
         # h_cat = F.one_hot(torch.argmax(h_cat, dim=2), self.num_classes) * node_mask
         h_int = torch.round(h_int).long() * node_mask
@@ -757,12 +757,12 @@ class EnVariationalDiffusion(torch.nn.Module):
 
         return neg_log_pxh, loss_dict
     
-    def sample_dynamic_give_zt_markovian(self, t, zt, node_mask, edge_mask, context):
+    def sample_dynamic_give_zt_markovian(self, sim_steps, t, zt, node_mask, edge_mask, context):
         
         delta_t = torch.tensor([1/self.T]).to(zt.device)
-        zt_placeholder = torch.zeros(self.T, zt.size(1), zt.size(2)).to(zt.device)
+        zt_placeholder = torch.zeros(sim_steps, zt.size(1), zt.size(2)).to(zt.device)
         zt_placeholder[0] = zt
-        for dt in tqdm(range(1, self.T)):
+        for dt in tqdm(range(1, sim_steps)):
             
             # print("delta_t", delta_t)
             eps_dynmaic = self.time_phi(t, delta_t, zt, node_mask, edge_mask, context)
@@ -905,7 +905,7 @@ class EnVariationalDiffusion(torch.nn.Module):
         return x, h
     
     @torch.no_grad()
-    def sample_dynamic(self, n_samples, n_nodes, node_mask, edge_mask, context, dynamic_t, fix_noise=False, markovian=False):
+    def sample_dynamic(self, sim_steps, n_samples, n_nodes, node_mask, edge_mask, context, dynamic_t, fix_noise=False, markovian=False):
         """
         Draw samples from the generative model.
         """
@@ -937,24 +937,75 @@ class EnVariationalDiffusion(torch.nn.Module):
                     
                     z = self.sample_dynamic_give_zt(s_array, t_array, z, node_mask, edge_mask, context)
                     # from IPython import embed; embed()
-                    n_samples = self.T
+                    n_samples = sim_steps
                 else:
-                    print("Sampling dynamic with markovian assumption")
-                    z = self.sample_dynamic_give_zt_markovian(t_array, z, node_mask, edge_mask, context)
-                    n_samples = self.T
-                    node_mask = node_mask.broadcast_to(self.T, node_mask.size(1), node_mask.size(2))
-                    edge_mask = edge_mask.squeeze(1).unsqueeze(0).broadcast_to(self.T, 100)
-                # from IPython import embed; embed()
-        x, h = self.sample_p_xh_given_z0(z, node_mask, edge_mask, context, fix_noise=fix_noise)
+                    
+                    if sim_steps > 1e4:
+                        print("Sampling dynamic with markovian assumption, breaking down the sampling pipeline")
+                        z = self.sample_dynamic_give_zt_markovian(sim_steps, t_array, z, node_mask, edge_mask, context)
+                        n_samples = self.T
+                        node_mask = node_mask.broadcast_to(self.T, node_mask.size(1), node_mask.size(2))
+                        edge_mask = edge_mask.squeeze(1).unsqueeze(0).broadcast_to(self.T, 100)
+                        z_temp = z.detach().to("cpu", dtype=z.dtype).contiguous()
+                        torch.save({"step":dynamic_t, "tensor": z_temp}, f"temp/gen_temp_{dynamic_t}.pt")
+                        break
+                    else:
+                        print("Sampling dynamic with markovian assumption")
+                        z = self.sample_dynamic_give_zt_markovian(sim_steps, t_array, z, node_mask, edge_mask, context)
+                        n_samples = sim_steps
+                        node_mask = node_mask.broadcast_to(sim_steps, node_mask.size(1), node_mask.size(2))
+                        edge_mask = edge_mask.squeeze(1).unsqueeze(0).broadcast_to(sim_steps, 100)
         
-        diffusion_utils.assert_mean_zero_with_mask(x, node_mask)
+        
+        if sim_steps > 1e4:
+            # separate z, and work with 1000 rows every time
+            
+            # load from z_temp
+            
+            z = torch.load(f"temp/gen_temp_{dynamic_t}.pt", map_location=self.time_dynamics.device)
+            # remove the file
+            
+            if os.path.exists(f"temp/gen_temp_{dynamic_t}.pt"):
+                os.remove(f"temp/gen_temp_{dynamic_t}.pt")
+                print("File removed.")
+            else:
+                print("File does not exist.")
+            z_tensor = z['tensor']
+            x_placeholder = torch.tensor([], device=self.time_dynamics.device)
+            h_placeholder = {'integer': torch.tensor([], device=self.time_dynamics.device),
+                             'categorical': torch.tensor([], device=self.time_dynamics.device)}
+            for start in range(0, z_tensor.shape[0], self.T):
+                n_samples = self.T
+                end = start + self.T
+                batch = z_tensor[start:end]
+                for s in tqdm(reversed(range(0, z['step']))):
+                    s_array = torch.full((n_samples, 1), fill_value=s, device=self.time_dynamics.device)
+                    t_array = s_array + 1
+                    s_array = s_array / self.T
+                    t_array = t_array / self.T
+                    # from IPython import embed; embed()
+                    batch = self.sample_p_zs_given_zt(s_array, t_array, batch, node_mask, edge_mask, context, fix_noise=fix_noise)
+                x, h = self.sample_p_xh_given_z0(batch, node_mask, edge_mask, context, fix_noise=fix_noise)
+                x_placeholder = torch.concat([x_placeholder, x])
+                h_placeholder['integer'] = torch.concat([h_placeholder['integer'], h['integer']])
+                h_placeholder['categorical'] = torch.concat([h_placeholder['categorical'], h['categorical']])
+                
+                # from IPython import embed; embed()
+            x = x_placeholder
+            h = h_placeholder
+            # divide z to 1000 apart and iterate over them
+        else:
+                
+            x, h = self.sample_p_xh_given_z0(z, node_mask, edge_mask, context, fix_noise=fix_noise)
+        
+        # diffusion_utils.assert_mean_zero_with_mask(x, node_mask)
 
-        max_cog = torch.sum(x, dim=1, keepdim=True).abs().max().item()
-        if max_cog > 5e-2:
-            print(f'Warning cog drift with error {max_cog:.3f}. Projecting '
-                  f'the positions down.')
-            x = diffusion_utils.remove_mean_with_mask(x, node_mask)
-
+        # max_cog = torch.sum(x, dim=1, keepdim=True).abs().max().item()
+        # if max_cog > 5e-2:
+        #     print(f'Warning cog drift with error {max_cog:.3f}. Projecting '
+        #           f'the positions down.')
+        #     x = diffusion_utils.remove_mean_with_mask(x, node_mask)
+        
         return x, h
         
     @torch.no_grad()

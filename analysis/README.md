@@ -1,0 +1,2 @@
+# How to run analysis
+Running analysis is easiest using `pixi`! Check the [pixi docx](https://pixi.prefix.dev/latest/installation/) on how to install. Then simply run `pixi install` to install the default environment or `pixi install -e default-nb` if you want to run a notebook. To run in the right environment, use `pixi shell -e {env}` and run there, or use `pixi run python -e {env} script.py` to run python scripts directly. In notebooks, select the `default-nb` env as the kernel.

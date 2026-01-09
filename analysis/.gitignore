@@ -1,0 +1,10 @@
+data/
+images/
+*.npz
+__pycache__/
+*.pyc
+# Allow notebooks in this subrepo
+!*.ipynb
+# pixi environments
+.pixi
+*.egg-info

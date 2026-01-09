@@ -1,0 +1,42 @@
+[project]
+authors = [{name = "Marloes Arts", email = "marl@genmab.com"}]
+dependencies = []
+name = "analysis"
+requires-python = ">= 3.10,<3.12"
+version = "0.1.0"
+
+[build-system]
+build-backend = "hatchling.build"
+requires = ["hatchling"]
+
+[tool.pixi.project]
+channels = ["conda-forge"]
+platforms = ["osx-arm64"]
+
+[tool.pixi.pypi-dependencies]
+analysis = { path = ".", editable = true }
+
+[tool.pixi.tasks]
+
+[tool.pixi.feature.standard.dependencies]
+mdtraj = ">=1.10.3,<2"
+numpy = ">=2.2.4,<3"
+rdkit = ">=2024.9.6,<2025"
+scipy = ">=1.15.2,<2"
+
+[tool.pixi.feature.notebook.dependencies]
+ipywidgets = ">=8.1.5,<9"
+ipykernel = ">=6.29.5,<7"
+iprogress = ">=0.4,<0.5"
+
+[tool.pixi.feature.visualize.dependencies]
+matplotlib = ">=3.10.1,<4"
+
+
+[tool.pixi.environments]
+default = ["standard", "analysis"]
+default-nb = ["standard", "analysis", "notebook", "visualize"]
+
+[dependency-groups]
+analysis = ["pyemma", "mdshare>=0.4.2,<0.5"]
+

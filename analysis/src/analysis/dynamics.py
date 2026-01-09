@@ -4,7 +4,7 @@ import pyemma
 import numpy as np
 import matplotlib.cm as cm
 
-def plot_fes(proj, title, max_points=10000):
+def plot_fes(proj, title, max_points=10000, method="tica", output_path="./images"):
     # Subsample if needed
     if proj.shape[0] > max_points:
         idx = np.random.choice(proj.shape[0], max_points, replace=False)
@@ -17,7 +17,7 @@ def plot_fes(proj, title, max_points=10000):
     plt.xlabel('TICA 1'); plt.ylabel('TICA 2')
     plt.colorbar(label='Density')
     plt.tight_layout()
-    plt.savefig(f'/Users/marl/Code/SpaceTime/images/fes_{title.replace(" ", "_").lower()}.png', dpi=300)
+    plt.savefig(f'{output_path}/fes_{method}_{title.replace(" ", "_").lower()}.png', dpi=300)
     plt.close()
 
 def compute_its(proj, name):

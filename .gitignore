@@ -5,6 +5,11 @@ data/*
 bash.sh
 kohler/cache/*
 *.ipynb
+*.mol
+*.out
+*.sh
+*.tar.gz
+outputs/
 .
 *.log
 *wandb*

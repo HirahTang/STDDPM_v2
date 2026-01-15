@@ -116,6 +116,9 @@ parser.add_argument('--normalization_factor', type=float, default=1,
 parser.add_argument('--aggregation_method', type=str, default='sum',
                     help='"sum" or "mean"')
 parser.add_argument('--time-dimension', type=float, default=1)
+parser.add_argument(
+        '--markovian_sampling', action='store_true',
+        help='Use markovian sampling')
 args = parser.parse_args()
 
 dataset_info = get_dataset_info(args.dataset, args.remove_h)
@@ -247,45 +250,45 @@ def main():
         print(f"Epoch took {time.time() - start_epoch:.1f} seconds.")
 
         # if epoch % args.test_epochs == 0:
-        if False:
-            if isinstance(model, en_diffusion.EnVariationalDiffusion):
-                wandb.log(model.log_info(), commit=True)
+        
+        if isinstance(model, en_diffusion.EnVariationalDiffusion):
+            wandb.log(model.log_info(), commit=True)
+        
+        if not args.break_train_epoch:
+            analyze_and_save(args=args, epoch=epoch, model_sample=model_ema, nodes_dist=nodes_dist,
+                                dataset_info=dataset_info, device=device,
+                                prop_dist=prop_dist, n_samples=args.n_stability_samples)
+        nll_val = test(args=args, loader=dataloaders['valid'], epoch=epoch, eval_model=model_ema_dp,
+                        partition='Val', device=device, dtype=dtype, nodes_dist=nodes_dist,
+                        property_norms=property_norms)
+        nll_test = test(args=args, loader=dataloaders['test'], epoch=epoch, eval_model=model_ema_dp,
+                        partition='Test', device=device, dtype=dtype,
+                         nodes_dist=nodes_dist, property_norms=property_norms)
 
-            if not args.break_train_epoch:
-                analyze_and_save(args=args, epoch=epoch, model_sample=model_ema, nodes_dist=nodes_dist,
-                                 dataset_info=dataset_info, device=device,
-                                 prop_dist=prop_dist, n_samples=args.n_stability_samples)
-            nll_val = test(args=args, loader=dataloaders['valid'], epoch=epoch, eval_model=model_ema_dp,
-                           partition='Val', device=device, dtype=dtype, nodes_dist=nodes_dist,
-                           property_norms=property_norms)
-            nll_test = test(args=args, loader=dataloaders['test'], epoch=epoch, eval_model=model_ema_dp,
-                            partition='Test', device=device, dtype=dtype,
-                            nodes_dist=nodes_dist, property_norms=property_norms)
+        # if nll_val < best_nll_val:
+        #     best_nll_val = nll_val
+        #     best_nll_test = nll_test
+        if args.save_model:
+            args.current_epoch = epoch + 1
+            utils.save_model(optim, 'outputs/%s/optim.npy' % args.exp_name)
+            utils.save_model(model, 'outputs/%s/generative_model.npy' % args.exp_name)
+            if args.ema_decay > 0:
+                utils.save_model(model_ema, 'outputs/%s/generative_model_ema.npy' % args.exp_name)
+            with open('outputs/%s/args.pickle' % args.exp_name, 'wb') as f:
+                pickle.dump(args, f)
 
-            if nll_val < best_nll_val:
-                best_nll_val = nll_val
-                best_nll_test = nll_test
-                if args.save_model:
-                    args.current_epoch = epoch + 1
-                    utils.save_model(optim, 'outputs/%s/optim.npy' % args.exp_name)
-                    utils.save_model(model, 'outputs/%s/generative_model.npy' % args.exp_name)
-                    if args.ema_decay > 0:
-                        utils.save_model(model_ema, 'outputs/%s/generative_model_ema.npy' % args.exp_name)
-                    with open('outputs/%s/args.pickle' % args.exp_name, 'wb') as f:
-                        pickle.dump(args, f)
-
-                if args.save_model:
-                    utils.save_model(optim, 'outputs/%s/optim_%d.npy' % (args.exp_name, epoch))
-                    utils.save_model(model, 'outputs/%s/generative_model_%d.npy' % (args.exp_name, epoch))
-                    if args.ema_decay > 0:
-                        utils.save_model(model_ema, 'outputs/%s/generative_model_ema_%d.npy' % (args.exp_name, epoch))
-                    with open('outputs/%s/args_%d.pickle' % (args.exp_name, epoch), 'wb') as f:
-                        pickle.dump(args, f)
-            print('Val loss: %.4f \t Test loss:  %.4f' % (nll_val, nll_test))
-            print('Best val loss: %.4f \t Best test loss:  %.4f' % (best_nll_val, best_nll_test))
-            wandb.log({"Val loss ": nll_val}, commit=True)
-            wandb.log({"Test loss ": nll_test}, commit=True)
-            wandb.log({"Best cross-validated test loss ": best_nll_test}, commit=True)
+        if args.save_model:
+            utils.save_model(optim, 'outputs/%s/optim_%d.npy' % (args.exp_name, epoch))
+            utils.save_model(model, 'outputs/%s/generative_model_%d.npy' % (args.exp_name, epoch))
+            if args.ema_decay > 0:
+                utils.save_model(model_ema, 'outputs/%s/generative_model_ema_%d.npy' % (args.exp_name, epoch))
+            with open('outputs/%s/args_%d.pickle' % (args.exp_name, epoch), 'wb') as f:
+                pickle.dump(args, f)
+        # print('Val loss: %.4f \t Test loss:  %.4f' % (nll_val, nll_test))
+        # print('Best val loss: %.4f \t Best test loss:  %.4f' % (best_nll_val, best_nll_test))
+        # wandb.log({"Val loss ": nll_val}, commit=True)
+        # wandb.log({"Test loss ": nll_test}, commit=True)
+        # wandb.log({"Best cross-validated test loss ": best_nll_test}, commit=True)
 
 
 if __name__ == "__main__":

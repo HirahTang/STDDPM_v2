@@ -749,8 +749,8 @@ class EnVariationalDiffusion(torch.nn.Module):
         
         
         loss_dynamic = loss_dynamic * (t.squeeze() < 0.5)
-        
-        return loss + 10 * loss_dynamic, {'t': t_int.squeeze(), 'loss_t': loss.squeeze(), 'loss_s': loss_dynamic.squeeze(),
+
+        return loss + loss_dynamic, {'t': t_int.squeeze(), 'loss_t': loss.squeeze(), 'loss_s': loss_dynamic.squeeze(),
                       'error': error.squeeze()}
 
     def forward(self, x1, x2, h, delta_t, node_mask=None, edge_mask=None, context=None):
